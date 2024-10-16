@@ -8,6 +8,7 @@ from torch import distributed as dist, nn
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct, QueryRequest
+from qdrant_client.models import Filter, FieldCondition, MatchValue
 
 from distrifuser.modules.base_module import BaseModule
 from .base_model import BaseModel
@@ -19,6 +20,8 @@ from ..utils import DistriConfig
 
 PATCH_SIZE = 16
 REPO_NAME = 'diffusers'
+USE_CACHE = True
+K = 15
 
 class DistriUNetTP(BaseModel):  # for Patch Parallelism
     def __init__(self, model: UNet2DConditionModel, distri_config: DistriConfig):
@@ -89,14 +92,29 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
                 vectors_config=VectorParams(size=b*c*PATCH_SIZE*PATCH_SIZE, distance=Distance.COSINE),
             )
 
-        if not record:
+        if not record and USE_CACHE and self.counter == 0:
             patches = self.patchify(sample)
-            results = self.client.query_batch_points("diffusers", requests=[QueryRequest(query=patch.flatten().tolist()
-            , limit=1, with_vector=True) for patch in patches])
-            print(len(results))
-            for result in results:
-                if result.points[0].score > 0.5:
-                    sample[]
+            for i, patch in enumerate(patches):
+                cached_patch = self.client.query_points("diffusers", query=patch.flatten().tolist(),
+                        # query_filter=Filter(
+                        #     must=[FieldCondition(key="index", match=MatchValue(value=i))]
+                        # ),
+                        with_payload=True,
+                        with_vectors=True,
+                        limit=1,).points[0].vector
+                patch_tensor = torch.Tensor(cached_patch).float().reshape(patch.shape)
+                _, _, ih, iw = sample.shape
+                _, _, ph, pw = patch.shape
+                
+                patch_x = i % (iw // pw)
+                patch_y = i // (ih // ph)
+                sample[:, :, patch_y*ph:(patch_y+1)*ph, patch_x*pw:(patch_x+1)*pw] = patch_tensor
+            # results = self.client.query_batch_points("diffusers", requests=[QueryRequest(query=patch.flatten().tolist()
+            # , limit=1, with_vector=True) for patch in patches])
+            # print(len(results))
+            # for result in results:
+            #     if result.points[0].score > 0.5:
+            #         sample[]
         if distri_config.use_cuda_graph and not record:
             static_inputs = self.static_inputs
 
@@ -220,13 +238,17 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
                     }
                 self.synchronize()
 
-        if not record:
+
+        if self.counter == K-1 and not record and not USE_CACHE:
             patches = self.patchify(output)
             #print(patches[0].flatten().tolist())
             self.client.upsert(
                 collection_name=REPO_NAME,
                 wait=True,
-                points=[PointStruct(id=time.time_ns() + i, vector=patch.flatten().tolist()) for i, patch in enumerate(patches)]
+                points=[PointStruct(id=time.time_ns() + i, vector=patch.flatten().tolist(), payload={
+                    "k": K,
+                    "index": i
+                }) for i, patch in enumerate(patches)]
             )
         if return_dict:
             output = UNet2DConditionOutput(sample=output)
@@ -234,6 +256,7 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
             output = (output,)
 
         self.counter += 1
+            
         return output
 
     @property

@@ -197,6 +197,7 @@ class DistriSDPipeline:
         pipeline = StableDiffusionPipeline.from_pretrained(
             pretrained_model_name_or_path, torch_dtype=torch_dtype, unet=unet, **kwargs
         ).to(device)
+        pipeline.safety_checker = lambda images, clip_input: (images, [False])
         return DistriSDPipeline(pipeline, distri_config)
 
     def set_progress_bar_config(self, **kwargs):
