@@ -1,4 +1,6 @@
 import torch
+import json
+import os
 
 from distrifuser.pipelines import DistriSDPipeline
 from distrifuser.utils import DistriConfig
@@ -9,11 +11,28 @@ pipeline = DistriSDPipeline.from_pretrained(
     pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4",
 )
 
+# Used for scoring quality
+prompt = "astronaut in a desert, cold color palette, muted colors, detailed, 8k"
+image_name = "astronaut.png"
+captions_file_path = "results/captions.json"
+
+os.makedirs('results', exist_ok=True)
+if os.path.exists(captions_file_path):
+    with open(captions_file_path, 'r') as json_file:
+        data = json.load(json_file)
+else:
+    data = {}
+
+data[image_name.split('.')[0]] = prompt
+
+with open(captions_file_path, 'w') as json_file:
+    json.dump(data, json_file, indent=4)
+
 pipeline.set_progress_bar_config(disable=distri_config.rank != 0)
 image = pipeline(
-    prompt="Camel in a desert, warm color palette, muted colors, detailed, 8k",
+    prompt=prompt,
     generator=torch.Generator(device="cuda").manual_seed(233),
     num_inference_steps=35,
 ).images[0]
 if distri_config.rank == 0:
-    image.save("camel-desert-cached-50.png")
+    image.save(os.path.join('results', image_name))

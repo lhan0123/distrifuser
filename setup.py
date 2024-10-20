@@ -7,6 +7,7 @@ if __name__ == "__main__":
     fp = open("distrifuser/__version__.py", "r").read()
     version = eval(fp.strip().split()[-1])
 
+    
     setup(
         name="distrifuser",
         author="Muyang Li, Tianle Cai, Jiaxin Cao, Qinsheng Zhang, Han Cai, Junjie Bai, Yangqing Jia, Ming-Yu Liu, Kai Li and Song Han",

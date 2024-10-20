@@ -1,0 +1,1 @@
+clipscore @ git+https://github.com/jmhessel/clipscore.git
