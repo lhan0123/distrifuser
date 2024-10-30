@@ -251,7 +251,6 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
         if self.counter in (5, 10, 15, 20) and not record and not USE_CACHE:
             # TODO: decode to image
             patches = self.patchify(output)
-            # print(patches[0].flatten().tolist())
             self.client.upsert(
                 collection_name=REPO_NAME,
                 wait=True,
