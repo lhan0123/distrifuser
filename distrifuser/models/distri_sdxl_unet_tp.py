@@ -241,7 +241,6 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
 
         if self.counter == K-1 and not record and not USE_CACHE:
             patches = self.patchify(output)
-            #print(patches[0].flatten().tolist())
             self.client.upsert(
                 collection_name=REPO_NAME,
                 wait=True,

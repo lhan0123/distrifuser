@@ -15,6 +15,15 @@ pipeline.set_progress_bar_config(disable=distri_config.rank != 0)
 image = pipeline(
     prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
     generator=torch.Generator(device="cuda").manual_seed(233),
+    num_inference_steps=10
 ).images[0]
 if distri_config.rank == 0:
     image.save("astronaut.png")
+    
+image = pipeline(
+    prompt="Astronaut in a desert, warm color palette, muted colors, detailed, 8k",
+    generator=torch.Generator(device="cuda").manual_seed(233),
+    # num_inference_steps=50
+).images[0]
+if distri_config.rank == 0:
+    image.save("astronaut-desert.png")

@@ -6,3 +6,6 @@ dist
 *.png
 results/
 clipscore/
+
+qdrant_storage/
+**/__pycache__/
