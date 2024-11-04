@@ -18,9 +18,13 @@ from ..modules.tp.feed_forward import DistriFeedForwardTP
 from ..modules.tp.resnet import DistriResnetBlock2DTP
 from ..utils import DistriConfig
 
+import distrifuser.models.distri_clipscore as distri_clipscore 
+
+prompt = "astronaut in a desert, cold color palette, muted colors, detailed, 8k"
+
 PATCH_SIZE = 16
 REPO_NAME = 'diffusers'
-USE_CACHE = True
+USE_CACHE = False
 K = 15
 
 class DistriUNetTP(BaseModel):  # for Patch Parallelism
@@ -72,6 +76,8 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
         return_dict: bool = True,
         record: bool = False,
     ):
+        distri_clipscore.evaluate_quality(sample, prompt)
+
         distri_config = self.distri_config
         b, c, h, w = sample.shape
         assert (
