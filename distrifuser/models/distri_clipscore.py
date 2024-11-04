@@ -26,6 +26,13 @@ import pprint
 import warnings
 from packaging import version
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+if device == 'cpu':
+    warnings.warn(
+        'CLIP runs in full float32 on CPU. Results in paper were computed on GPU, which uses float16. '
+        'If you\'re reporting results on CPU, please note this when you report.')
+model, transform = clip.load("ViT-B/32", device=device, jit=False)
+model.eval()
 
 class CLIPCapDataset(torch.utils.data.Dataset):
     def __init__(self, data, prefix='A photo depicts'):
@@ -92,7 +99,8 @@ def extract_all_captions(captions, model, device, batch_size=256, num_workers=8)
         batch_size=batch_size, num_workers=num_workers, shuffle=False)
     all_text_features = []
     with torch.no_grad():
-        for b in tqdm.tqdm(data):
+        for b in data:
+            b = b['caption'].to(device)
             all_text_features.append(model.encode_text(b).cpu().numpy())
     all_text_features = np.vstack(all_text_features)
     return all_text_features
@@ -122,7 +130,6 @@ def extract_an_image(sample, model, device, batch_size=64, num_workers=8):
         b = processed_image.to(device)
         if device == 'cuda':
             b = b.to(torch.float16)
-            print('b', type(b), b.shape)
         all_image_features.append(model.encode_image(b).cpu().numpy())
     
     all_image_features = np.vstack(all_image_features)
@@ -138,7 +145,7 @@ def get_clip_score(model, image, candidates, device, w=2.5):
     '''
 
     images = extract_an_image(image, model, device, batch_size=64, num_workers=8)
-
+    print(f'{candidates=}')
     candidates = extract_all_captions(candidates, model, device)
 
     #as of numpy 1.21, normalize doesn't work properly for float16
@@ -203,14 +210,6 @@ def evaluate_quality(image, prompt):
 
     candidates = [prompt]
 
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    if device == 'cpu':
-        warnings.warn(
-            'CLIP runs in full float32 on CPU. Results in paper were computed on GPU, which uses float16. '
-            'If you\'re reporting results on CPU, please note this when you report.')
-    model, transform = clip.load("ViT-B/32", device=device, jit=False)
-    model.eval()
 
     # image_feats = extract_an_image(
     #     image, model, device, batch_size=64, num_workers=8)

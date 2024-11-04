@@ -28,11 +28,11 @@ data[image_name.split('.')[0]] = prompt
 with open(captions_file_path, 'w') as json_file:
     json.dump(data, json_file, indent=4)
 
-pipeline.set_progress_bar_config(disable=distri_config.rank != 0)
+pipeline.set_progress_bar_config(disable=True)
 image = pipeline(
     prompt=prompt,
     generator=torch.Generator(device="cuda").manual_seed(233),
-    num_inference_steps=35,
+    num_inference_steps=50,
 ).images[0]
 if distri_config.rank == 0:
     image.save(os.path.join('results', image_name))

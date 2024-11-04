@@ -76,7 +76,8 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
         return_dict: bool = True,
         record: bool = False,
     ):
-        distri_clipscore.evaluate_quality(sample, prompt)
+        if not record:
+            distri_clipscore.evaluate_quality(sample, prompt)
 
         distri_config = self.distri_config
         b, c, h, w = sample.shape
