@@ -23,13 +23,13 @@ import distrifuser.models.distri_clipscore as distri_clipscore
 prompt = "astronaut in a desert, cold color palette, muted colors, detailed, 8k"
 
 PATCH_SIZE = 16
-REPO_NAME = 'diffusers'
-USE_CACHE = False
-K = 15
+REPO_NAME = 'patching'
 
 class DistriUNetTP(BaseModel):  # for Patch Parallelism
-    def __init__(self, model: UNet2DConditionModel, distri_config: DistriConfig):
+    def __init__(self, model: UNet2DConditionModel, distri_config: DistriConfig, profile=False):
         assert isinstance(model, UNet2DConditionModel)
+        self.profile = profile
+        self.image_id = -1
         if distri_config.world_size > 1 and distri_config.n_device_per_batch > 1:
             for name, module in model.named_modules():
                 if isinstance(module, BaseModule):
@@ -58,6 +58,9 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
         patches = tensor.unfold(2, PATCH_SIZE, PATCH_SIZE).unfold(3, PATCH_SIZE, PATCH_SIZE)
         patches = patches.reshape(2, ch, -1, PATCH_SIZE, PATCH_SIZE).transpose(0, 2).transpose(1, 2)
         return patches
+    
+    def set_image_id(self, image_id):
+        self.image_id = image_id
 
     def forward(
         self,
@@ -74,7 +77,7 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
         down_intrablock_additional_residuals: tuple[torch.Tensor] or None = None,
         encoder_attention_mask: torch.Tensor or None = None,
         return_dict: bool = True,
-        record: bool = False,
+        record: bool = False
     ):
         if not record:
             distri_clipscore.evaluate_quality(sample, prompt)
@@ -100,7 +103,7 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
                 vectors_config=VectorParams(size=b*c*PATCH_SIZE*PATCH_SIZE, distance=Distance.COSINE),
             )
 
-        if not record and USE_CACHE and self.counter == 0:
+        if not record and not self.profile and self.counter == 0:
             patches = self.patchify(sample)
             for i, patch in enumerate(patches):
                 cached_patch = self.client.query_points("diffusers", query=patch.flatten().tolist(),
@@ -248,15 +251,15 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
                 self.synchronize()
 
 
-        if self.counter in (5, 10, 15, 20) and not record and not USE_CACHE:
-            # TODO: decode to image
+        if self.counter in (4, 9, 14, 19) and not record and self.profile:
             patches = self.patchify(output)
             self.client.upsert(
                 collection_name=REPO_NAME,
                 wait=True,
                 points=[PointStruct(id=time.time_ns() + i, vector=patch.flatten().tolist(), payload={
                     "k": self.counter,
-                    "index": i
+                    "index": i,
+                    "image_id": self.image_id
                 }) for i, patch in enumerate(patches)]
             )
         if return_dict:

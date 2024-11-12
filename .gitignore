@@ -5,7 +5,11 @@ dist
 *.egg-info
 *.png
 results/
+datasets/
+clusters/
 clipscore/
 
 qdrant_storage/
-**/__pycache__/
+*.pyc
+
+*.parquet

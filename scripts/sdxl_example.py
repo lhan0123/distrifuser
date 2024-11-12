@@ -9,6 +9,7 @@ pipeline = DistriSDXLPipeline.from_pretrained(
     pretrained_model_name_or_path="stabilityai/stable-diffusion-xl-base-1.0",
     variant="fp16",
     use_safetensors=True,
+    profile=True
 )
 
 pipeline.set_progress_bar_config(disable=distri_config.rank != 0)

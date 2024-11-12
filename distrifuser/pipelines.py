@@ -17,7 +17,7 @@ class DistriSDXLPipeline:
         self.prepare()
 
     @staticmethod
-    def from_pretrained(distri_config: DistriConfig, **kwargs):
+    def from_pretrained(distri_config: DistriConfig, profile=False, **kwargs):
         device = distri_config.device
         pretrained_model_name_or_path = kwargs.pop(
             "pretrained_model_name_or_path", "stabilityai/stable-diffusion-xl-base-1.0"
@@ -30,7 +30,7 @@ class DistriSDXLPipeline:
         if distri_config.parallelism == "patch":
             unet = DistriUNetPP(unet, distri_config)
         elif distri_config.parallelism == "tensor":
-            unet = DistriUNetTP(unet, distri_config)
+            unet = DistriUNetTP(unet, distri_config, profile)
         elif distri_config.parallelism == "naive_patch":
             unet = NaivePatchUNet(unet, distri_config)
         else:
@@ -54,6 +54,7 @@ class DistriSDXLPipeline:
                 kwargs["guidance_scale"] = 1
             else:
                 assert kwargs["guidance_scale"] == 1
+        self.pipeline.unet.set_image_id(kwargs["image_id"])
         self.pipeline.unet.set_counter(0)
         return self.pipeline(height=config.height, width=config.width, *args, **kwargs)
 
