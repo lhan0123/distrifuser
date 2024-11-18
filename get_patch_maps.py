@@ -43,6 +43,28 @@ def get_saliency_map(image):
 
     return saliency
 
+def get_patch_map(images):
+    images = [Image.open(img) if type(img) == 'str' else img for img in images]
+    saliencies = [get_saliency_map(img) for img in images]
+
+    avg_saliency = np.mean(saliencies, axis=0)
+    patch_avg_saliency = skimage.measure.block_reduce(
+        avg_saliency, (PATCH_SIZE, PATCH_SIZE), np.mean)
+
+    ks = (30, 25, 20, 15, 10, 5)
+    _, bins = np.histogram(patch_avg_saliency, bins=len(ks))
+    def mapper(x):
+        for i in range(1, len(bins)):
+            if x < bins[i]:
+                return ks[i-1]
+        
+        return ks[-1]
+
+    vfunc = np.vectorize(mapper)
+    patch_map = vfunc(patch_avg_saliency)
+
+    return patch_map
+
 def main():
     
     with open("cluster_labels.json", "r") as f:
@@ -51,24 +73,8 @@ def main():
     for label, cluster in cluster_labels.items():
         if label == "-1":
             continue
-        saliencies = [get_saliency_map(Image.open(img)) for img in cluster]
-
-        avg_saliency = np.mean(saliencies, axis=0)
-
-        patch_avg_saliency = skimage.measure.block_reduce(
-            avg_saliency, (PATCH_SIZE, PATCH_SIZE), np.mean)
-
-        ks = (20, 15, 10, 5)
-        _, bins = np.histogram(patch_avg_saliency, bins=len(ks))
-        def mapper(x):
-            for i in range(1, len(bins)):
-                if x < bins[i]:
-                    return ks[i-1]
-            
-            return ks[-1]
-
-        vfunc = np.vectorize(mapper)
-        patch_map = vfunc(patch_avg_saliency)
+        
+        patch_map = get_patch_map(cluster)
         Path(f"clusters/cluster_{label}").mkdir(parents=True, exist_ok=True)
         np.savetxt(f'clusters/cluster_{label}/patch_map.txt', patch_map, delimiter=',')
 

@@ -34,6 +34,7 @@ class DistriConfig:
         parallelism: str = "patch",
         split_scheme: str = "row",
         verbose: bool = False,
+        is_profile: bool = False,
     ):
         try:
             # Initialize the process group
@@ -63,6 +64,7 @@ class DistriConfig:
         self.parallelism = parallelism
         self.split_scheme = split_scheme
 
+        self.is_profile = is_profile
         self.verbose = verbose
 
         if do_classifier_free_guidance and split_batch:

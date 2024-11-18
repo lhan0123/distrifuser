@@ -18,18 +18,9 @@ from ..modules.tp.feed_forward import DistriFeedForwardTP
 from ..modules.tp.resnet import DistriResnetBlock2DTP
 from ..utils import DistriConfig
 
-import distrifuser.models.distri_clipscore as distri_clipscore 
-
-prompt = "astronaut in a desert, cold color palette, muted colors, detailed, 8k"
-
-PATCH_SIZE = 16
-REPO_NAME = 'patching'
-
 class DistriUNetTP(BaseModel):  # for Patch Parallelism
-    def __init__(self, model: UNet2DConditionModel, distri_config: DistriConfig, profile=False):
+    def __init__(self, model: UNet2DConditionModel, distri_config: DistriConfig):
         assert isinstance(model, UNet2DConditionModel)
-        self.profile = profile
-        self.image_id = -1
         if distri_config.world_size > 1 and distri_config.n_device_per_batch > 1:
             for name, module in model.named_modules():
                 if isinstance(module, BaseModule):
@@ -50,17 +41,7 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
                         wrapped_submodule = DistriConv2dTP(submodule, distri_config)
                         setattr(module, subname, wrapped_submodule)
 
-        self.client = QdrantClient(url="http://localhost:6333")
         super(DistriUNetTP, self).__init__(model, distri_config)
-
-    def patchify(self, tensor: torch.Tensor):
-        ch = tensor.shape[1]
-        patches = tensor.unfold(2, PATCH_SIZE, PATCH_SIZE).unfold(3, PATCH_SIZE, PATCH_SIZE)
-        patches = patches.reshape(2, ch, -1, PATCH_SIZE, PATCH_SIZE).transpose(0, 2).transpose(1, 2)
-        return patches
-    
-    def set_image_id(self, image_id):
-        self.image_id = image_id
 
     def forward(
         self,
@@ -79,8 +60,6 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
         return_dict: bool = True,
         record: bool = False
     ):
-        if not record:
-            distri_clipscore.evaluate_quality(sample, prompt)
 
         distri_config = self.distri_config
         b, c, h, w = sample.shape
@@ -96,37 +75,6 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
             and encoder_attention_mask is None
         )
 
-
-        if not self.client.collection_exists(REPO_NAME):
-            self.client.create_collection(
-                collection_name=REPO_NAME,
-                vectors_config=VectorParams(size=b*c*PATCH_SIZE*PATCH_SIZE, distance=Distance.COSINE),
-            )
-
-        if not record and not self.profile and self.counter == 0:
-            patches = self.patchify(sample)
-            for i, patch in enumerate(patches):
-                cached_patch = self.client.query_points("diffusers", query=patch.flatten().tolist(),
-                        query_filter=Filter(
-                            must=[FieldCondition(key="index", match=MatchValue(value=i)), FieldCondition(key="k", match=MatchValue(value=i))]
-                        ),
-                        with_payload=True,
-                        with_vectors=True,
-                        limit=1,).points[0].vector
-                patch_tensor = torch.Tensor(cached_patch).float().reshape(patch.shape)
-                _, _, ih, iw = sample.shape
-                _, _, ph, pw = patch.shape
-                
-                patch_x = i % (iw // pw)
-                patch_y = i // (ih // ph)
-                sample[:, :, patch_y*ph:(patch_y+1)*ph, patch_x*pw:(patch_x+1)*pw] = patch_tensor
-
-            # results = self.client.query_batch_points("diffusers", requests=[QueryRequest(query=patch.flatten().tolist()
-            # , limit=1, with_vector=True) for patch in patches])
-            # print(len(results))
-            # for result in results:
-            #     if result.points[0].score > 0.5:
-            #         sample[]
         if distri_config.use_cuda_graph and not record:
             static_inputs = self.static_inputs
 
@@ -250,18 +198,6 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
                     }
                 self.synchronize()
 
-
-        if self.counter in (4, 9, 14, 19) and not record and self.profile:
-            patches = self.patchify(output)
-            self.client.upsert(
-                collection_name=REPO_NAME,
-                wait=True,
-                points=[PointStruct(id=time.time_ns() + i, vector=patch.flatten().tolist(), payload={
-                    "k": self.counter,
-                    "index": i,
-                    "image_id": self.image_id
-                }) for i, patch in enumerate(patches)]
-            )
         if return_dict:
             output = UNet2DConditionOutput(sample=output)
         else:

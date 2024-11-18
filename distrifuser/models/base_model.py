@@ -6,7 +6,7 @@ from ..utils import PatchParallelismCommManager, DistriConfig
 
 
 class BaseModel(ModelMixin, ConfigMixin):
-    def __init__(self, model: nn.Module, distri_config: DistriConfig):
+    def __init__(self, model: nn.Module, distri_config: DistriConfig = None):
         super(BaseModel, self).__init__()
         self.model = model
         self.distri_config = distri_config
@@ -15,6 +15,7 @@ class BaseModel(ModelMixin, ConfigMixin):
         self.buffer_list = None
         self.output_buffer = None
         self.counter = 0
+        self.image_id = -1
 
         # for cuda graph
         self.static_inputs = None
@@ -30,6 +31,9 @@ class BaseModel(ModelMixin, ConfigMixin):
             if isinstance(module, BaseModule):
                 module.set_counter(counter)
 
+    def set_image_id(self, image_id):
+        self.image_id = image_id
+        
     def set_comm_manager(self, comm_manager: PatchParallelismCommManager):
         self.comm_manager = comm_manager
         for module in self.model.modules():

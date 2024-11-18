@@ -66,7 +66,10 @@ class SingleImageProcessor:
 
     def process_image(self):
 
-        pil_image = ToPILImage()(self.data[0, :3, :, :])
+        if isinstance(self.data, torch.Tensor):
+            pil_image = ToPILImage()(self.data[0, :3, :, :])
+        else:
+            pil_image = self.data
         processed_tensor = self.preprocess(pil_image)
         processed_tensor = processed_tensor.unsqueeze(0)  # Shape: [1, 3, 224, 224]
         
@@ -145,7 +148,6 @@ def get_clip_score(model, image, candidates, device, w=2.5):
     '''
 
     images = extract_an_image(image, model, device, batch_size=64, num_workers=8)
-    print(f'{candidates=}')
     candidates = extract_all_captions(candidates, model, device)
 
     #as of numpy 1.21, normalize doesn't work properly for float16
