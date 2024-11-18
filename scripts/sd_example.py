@@ -5,10 +5,13 @@ import os
 from distrifuser.pipelines import DistriSDPipeline
 from distrifuser.utils import DistriConfig
 
+
+# load k maps
 distri_config = DistriConfig(height=512, width=512, warmup_steps=4, mode="stale_gn", parallelism="tensor")
 pipeline = DistriSDPipeline.from_pretrained(
     distri_config=distri_config,
     pretrained_model_name_or_path="CompVis/stable-diffusion-v1-4",
+    # kmaps=kmaps
 )
 
 # Used for scoring quality
@@ -34,5 +37,6 @@ image = pipeline(
     generator=torch.Generator(device="cuda").manual_seed(233),
     num_inference_steps=50,
 ).images[0]
+
 if distri_config.rank == 0:
     image.save(os.path.join('results', image_name))

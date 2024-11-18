@@ -81,6 +81,7 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
 
         distri_config = self.distri_config
         b, c, h, w = sample.shape
+
         assert (
             class_labels is None
             and timestep_cond is None
@@ -103,9 +104,9 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
             patches = self.patchify(sample)
             for i, patch in enumerate(patches):
                 cached_patch = self.client.query_points("diffusers", query=patch.flatten().tolist(),
-                        # query_filter=Filter(
-                        #     must=[FieldCondition(key="index", match=MatchValue(value=i))]
-                        # ),
+                        query_filter=Filter(
+                            must=[FieldCondition(key="index", match=MatchValue(value=i)), FieldCondition(key="k", match=MatchValue(value=i))]
+                        ),
                         with_payload=True,
                         with_vectors=True,
                         limit=1,).points[0].vector
@@ -116,6 +117,7 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
                 patch_x = i % (iw // pw)
                 patch_y = i // (ih // ph)
                 sample[:, :, patch_y*ph:(patch_y+1)*ph, patch_x*pw:(patch_x+1)*pw] = patch_tensor
+
             # results = self.client.query_batch_points("diffusers", requests=[QueryRequest(query=patch.flatten().tolist()
             # , limit=1, with_vector=True) for patch in patches])
             # print(len(results))
@@ -246,14 +248,15 @@ class DistriUNetTP(BaseModel):  # for Patch Parallelism
                 self.synchronize()
 
 
-        if self.counter == K-1 and not record and not USE_CACHE:
+        if self.counter in (5, 10, 15, 20) and not record and not USE_CACHE:
+            # TODO: decode to image
             patches = self.patchify(output)
-            #print(patches[0].flatten().tolist())
+            # print(patches[0].flatten().tolist())
             self.client.upsert(
                 collection_name=REPO_NAME,
                 wait=True,
                 points=[PointStruct(id=time.time_ns() + i, vector=patch.flatten().tolist(), payload={
-                    "k": K,
+                    "k": self.counter,
                     "index": i
                 }) for i, patch in enumerate(patches)]
             )

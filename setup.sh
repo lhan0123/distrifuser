@@ -5,6 +5,8 @@ sudo apt install python3-pip -y
 # setup distrifuser environment
 pip install -e .
 pip install accelerate
+pip install huggingface_hub==0.25.0
+pip3 install -U scikit-learn scipy matplotlib
 
 # setup docker environment
 sudo apt-get update -y
