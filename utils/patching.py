@@ -3,8 +3,9 @@ from typing import Optional
 import torch
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct, MultiVectorConfig, MultiVectorComparator
-from qdrant_client.models import Filter, FieldCondition, MatchValue, Datatype
+from qdrant_client.models import Filter, FieldCondition, MatchValue, Datatype, MatchAny
 import numpy as np
+from multiprocessing.pool import ThreadPool
 
 
 BASE_COLLECTION_NAME = "patching"
@@ -59,58 +60,73 @@ def save_prompt_to_db(client: QdrantClient, prompt_embeds: torch.Tensor, image_i
                   })])
 
 
-def find_similar_prompt(client, prompt_embeds):
+def find_similar_prompt(client: QdrantClient, prompt_embeds: torch.Tensor, cluster: list[int] = None):
+    query_filter = None
+    if cluster:
+        query_filter = Filter(
+            must=[
+                FieldCondition(
+                    key="image_id",
+                    match=MatchAny(any=cluster)
+                )
+            ]
+        )
     point = client.query_points(PROMPT_COLLECTION_NAME, query=prompt_embeds.tolist()[0],
+                                query_filter=query_filter,
                                 with_payload=True,
                                 with_vectors=True,
                                 limit=1,).points[0]
     image_id = point.payload["image_id"]
     score = point.score / prompt_embeds.shape[1]
+    print(f"Found similar prompt with image_id: {image_id} and score: {score}")
     # todo: less than a threshold, don't use cache
     return image_id
 
+def get_best_patch(i: int, patch: torch.Tensor, client: QdrantClient, latents: torch.Tensor, image_id: int, patch_map: Optional[list[list[int]]] = None):
+    _, _, ih, iw = latents.shape
+    _, _, ph, pw = patch.shape
 
+    patch_x = i % (iw // pw)
+    patch_y = i // (ih // ph)
+    
+    k = patch_map[patch_y][patch_x] if patch_map is not None else DEFAULT_K
+    
+    cached_patch = client.scroll(
+        collection_name=PATCH_COLLECTION_NAME,
+        scroll_filter=Filter(
+            must=[
+                FieldCondition(
+                    key="k",
+                    match=MatchValue(value=k),
+                ),
+                FieldCondition(
+                    key="index",
+                    match=MatchValue(value=i),
+                ),
+                FieldCondition(
+                    key="image_id",
+                    match=MatchValue(value=image_id),
+                )
+            ]
+        ),
+        with_vectors=True,
+        limit=1
+    )[0]
+
+    if len(cached_patch) == 0:
+        return
+
+    cached_patch = cached_patch[0].vector
+    patch_tensor = torch.Tensor(cached_patch).to(torch.float16).reshape(patch.shape)
+    
+    latents[:, :, patch_y*ph:(patch_y+1)*ph,
+            patch_x*pw:(patch_x+1)*pw] = patch_tensor
+    
 def initialize_latents_from_cache(client: QdrantClient, latents: torch.Tensor, image_id: int, patch_map: Optional[list[list[int]]] = None):
     patches = patchify(latents)
-    for i, patch in enumerate(patches):
-        _, _, ih, iw = latents.shape
-        _, _, ph, pw = patch.shape
-
-        patch_x = i % (iw // pw)
-        patch_y = i // (ih // ph)
-        
-        k = patch_map[patch_y][patch_x] if patch_map is not None else DEFAULT_K
-        
-        cached_patch = client.scroll(
-            collection_name=PATCH_COLLECTION_NAME,
-            scroll_filter=Filter(
-                must=[
-                    FieldCondition(
-                        key="k",
-                        match=MatchValue(value=k),
-                    ),
-                    FieldCondition(
-                        key="index",
-                        match=MatchValue(value=i),
-                    ),
-                    FieldCondition(
-                        key="image_id",
-                        match=MatchValue(value=image_id),
-                    )
-                ]
-            ),
-            with_vectors=True,
-            limit=1
-        )[0]
-
-        if len(cached_patch) == 0:
-            continue
-
-        cached_patch = cached_patch[0].vector
-        patch_tensor = torch.Tensor(cached_patch).to(torch.float16).reshape(patch.shape)
-        
-        latents[:, :, patch_y*ph:(patch_y+1)*ph,
-                patch_x*pw:(patch_x+1)*pw] = patch_tensor
+    
+    pool = ThreadPool(processes=5)
+    pool.starmap(get_best_patch, [(i, patch, client, latents, image_id, patch_map) for i, patch in enumerate(patches)])
     return latents
 
 

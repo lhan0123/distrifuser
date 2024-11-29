@@ -1,25 +1,37 @@
 import json
 import os
+from pathlib import Path
+import sys
 import torch
 import clip
 from PIL import Image
 from sklearn.cluster import DBSCAN
 from sklearn.preprocessing import StandardScaler
 import numpy as np
+from multiprocessing.pool import ThreadPool
     
+def preprocess_image(args):
+    image_path, preprocess, device = args
+    image = Image.open(image_path)
+    tensor = preprocess(image).unsqueeze(0).to(device)
+    image.close()
+    return tensor
+
 # Function to load and preprocess images
 def get_image_embeddings(image_paths):
     # Load the CLIP model
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model, preprocess = clip.load("ViT-B/32", device=device)
     
-    images = [preprocess(Image.open(path)).unsqueeze(0).to(device) for path in image_paths]
+    pool = ThreadPool(processes=12)
+    images = pool.map(preprocess_image, [(path, preprocess, device) for path in image_paths])
+    
+    # images = [preprocess(Image.open(path)).unsqueeze(0).to(device) for path in image_paths]
     with torch.no_grad():
         image_embeddings = [model.encode_image(image).cpu().numpy() for image in images]
     return np.vstack(image_embeddings)
 
 def main():
-
 
     _, dirs, _ = next(os.walk("datasets"))
     # Load and preprocess images

@@ -1,4 +1,6 @@
 import json
+from multiprocessing.pool import ThreadPool
+import os
 from pathlib import Path
 import numpy as np
 from torchvision import models, transforms
@@ -6,52 +8,67 @@ import torchvision
 import torch
 from PIL import Image
 import skimage
-import matplotlib.pyplot as plt
+from torch import nn
 
-PATCH_SIZE = 16
+from utils.patching import PATCH_SIZE
 
-def get_saliency_map(image):
+def preprocess_image(args):
+    image, preprocess, device = args
+    is_path = type(image) == str
+    if is_path:
+        image = Image.open(image)
+    # Load and preprocess the image
+    input_tensor = preprocess(image).to(device)
+    if is_path:
+        image.close()
+    return input_tensor
 
+def get_saliency_maps(images):
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     # Load a pre-trained model (e.g., ResNet50)
     model = models.resnet50(
-        weights=torchvision.models.ResNet50_Weights.DEFAULT)
+        weights=torchvision.models.ResNet50_Weights.DEFAULT).to(device)
     model.eval()
-    w, h = image.size
+    
+    if type(images) != list:
+        images = [images]
 
-    # Load and preprocess the image
     preprocess = transforms.Compose([
         transforms.Resize((224, 224)),  # Resize to model input size, if needed
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[
                              0.229, 0.224, 0.225]),
     ])
-    input_tensor = preprocess(image).unsqueeze(0)
-    input_tensor.requires_grad_()
-
+    pool = ThreadPool(processes=12)
+    input_tensors = torch.stack(pool.map(preprocess_image, [(image, preprocess, device) for image in images[:100]])).requires_grad_()
+    pool.close()
+    
     # Forward pass
-    output = model(input_tensor)
-    predicted_class = output.argmax(dim=1).item()
+    outputs = model(input_tensors)
+    scores, _ = torch.max(outputs, dim=1)
 
     # Backpropagate to get gradients
     model.zero_grad()
-    output[0, predicted_class].backward()
+    scores.backward(torch.ones_like(scores))
 
     # Get saliency map
-    saliency, _ = torch.max(input_tensor.grad.data.abs(), dim=1)
-    saliency = transforms.Resize((w, h))(saliency)
-    saliency = saliency.squeeze().cpu().numpy()
-
+    saliency, _ = torch.max(input_tensors.grad.data.abs(), dim=1)
+    saliency = transforms.Resize((1024, 1024))(saliency)
+    saliency = saliency.squeeze()
+    
     return saliency
 
-def get_patch_map(images):
-    images = [Image.open(img) if type(img) == 'str' else img for img in images]
-    saliencies = [get_saliency_map(img) for img in images]
+avg_pool = nn.AvgPool2d(PATCH_SIZE, stride=PATCH_SIZE)
 
-    avg_saliency = np.mean(saliencies, axis=0)
+def get_patch_map(images, patch_size=PATCH_SIZE):
+    saliency_maps = get_saliency_maps(images)
+
+    avg_saliency = torch.mean(saliency_maps, dim=0).cpu().numpy()
     patch_avg_saliency = skimage.measure.block_reduce(
-        avg_saliency, (PATCH_SIZE, PATCH_SIZE), np.mean)
+        avg_saliency, (patch_size, patch_size), np.mean)
 
-    ks = (30, 25, 20, 15, 10, 5)
+    ks = (20, 15, 10, 5)
     _, bins = np.histogram(patch_avg_saliency, bins=len(ks))
     def mapper(x):
         for i in range(1, len(bins)):
@@ -76,6 +93,9 @@ def main():
         
         patch_map = get_patch_map(cluster)
         Path(f"clusters/cluster_{label}").mkdir(parents=True, exist_ok=True)
+        for image_path in cluster:
+            if not Path(f"clusters/cluster_{label}/{image_path.split('/')[1]}.png").exists():
+                Path(f"clusters/cluster_{label}/{image_path.split('/')[1]}.png").symlink_to(Path(image_path).absolute())
         np.savetxt(f'clusters/cluster_{label}/patch_map.txt', patch_map, delimiter=',')
 
 if __name__ == "__main__":

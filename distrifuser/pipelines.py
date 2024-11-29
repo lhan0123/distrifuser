@@ -113,6 +113,7 @@ class CachedSDXLPipeline:
         num_inference_steps: int = 50,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         image_id: int = -1,
+        cluster: list[int] = None,
         patch_map: list[list[int]] = None
     ):
         config = self.distri_config
@@ -229,7 +230,7 @@ class CachedSDXLPipeline:
         if self.is_profile:
             save_prompt_to_db(self.client, prompt_embeds, image_id)
         else:
-            image_id = find_similar_prompt(self.client, prompt_embeds)
+            image_id = find_similar_prompt(self.client, prompt_embeds, cluster)
         
         if not self.is_profile:
             latents = initialize_latents_from_cache(self.client, latents, image_id, patch_map)

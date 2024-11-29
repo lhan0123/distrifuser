@@ -1,18 +1,10 @@
-import time
 import torch
 from diffusers import UNet2DConditionModel
 from diffusers.models.unet_2d_condition import UNet2DConditionOutput
 
-from qdrant_client import QdrantClient
-from qdrant_client.models import Distance, VectorParams, PointStruct, QueryRequest
-from qdrant_client.models import Filter, FieldCondition, MatchValue
-
 from .base_model import BaseModel
 
-PATCH_SIZE = 16
-REPO_NAME = 'patching'
-
-class BaseUNet(BaseModel):  # for Patch Parallelism
+class BaseUNet(BaseModel):
     def __init__(self, model: UNet2DConditionModel):
         assert isinstance(model, UNet2DConditionModel)
         super(BaseUNet, self).__init__(model)

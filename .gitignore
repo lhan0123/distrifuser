@@ -10,6 +10,6 @@ clusters/
 clipscore/
 
 qdrant_storage/
-*.pyc
+**/*.pyc
 
 *.parquet
