@@ -178,3 +178,16 @@ If you use this code for your research, please cite our paper.
 Our code is developed based on [huggingface/diffusers](https://github.com/huggingface/diffusers) and [lmxyy/sige](https://github.com/lmxyy/sige). We thank [torchprofile](https://github.com/zhijian-liu/torchprofile) for MACs measurement, [clean-fid](https://github.com/GaParmar/clean-fid) for FID computation and [Lightning-AI/torchmetrics](https://github.com/Lightning-AI/torchmetrics) for PSNR and LPIPS.
 
 We thank Jun-Yan Zhu and Ligeng Zhu for their helpful discussion and valuable feedback. The project is supported by MIT-IBM Watson AI Lab, Amazon, MIT Science Hub, and National Science Foundation.
+
+
+## Run
+
+To run the mode, run the following instructions
+
+```
+python3 generate_image.py
+python3 clustering.py
+python3 get_patch_maps.py
+python3 benchmark.py
+
+```
