@@ -182,7 +182,11 @@ We thank Jun-Yan Zhu and Ligeng Zhu for their helpful discussion and valuable fe
 
 ## Run
 
-To run the model, run the following instructions
+1. Download docker
+2. Install Qdrant `pip install qdrant-client`
+3. Run Qdrant `docker run -d -p 6333:6333 -p 6334:6334 -v $(pwd)/qdrant_storage:/qdrant/storage:z qdrant/qdrant`
+4. Download [clipsorce](https://github.com/jmhessel/clipscore.git)
+5. Run the model with the following instructions
 
 ```
 python3 generate_image.py
