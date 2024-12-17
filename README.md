@@ -182,7 +182,7 @@ We thank Jun-Yan Zhu and Ligeng Zhu for their helpful discussion and valuable fe
 
 ## Run
 
-To run the mode, run the following instructions
+To run the modle, run the following instructions
 
 ```
 python3 generate_image.py
